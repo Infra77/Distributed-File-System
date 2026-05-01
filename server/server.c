@@ -17,10 +17,9 @@
 void handle_client(int nsd, struct Session session){
     char cmd[200];
     
-
     while(1){
         read(nsd, cmd, sizeof(cmd)); 
-        printf("Command received from %s: %s\n", cmd, session.username);
+        printf("Command received from %s: %s\n", session.username, cmd);
     
         struct Thread_Args *thread_args = (struct Thread_Args *)malloc(sizeof(struct Thread_Args));
         thread_args->nsd = nsd;
@@ -72,7 +71,7 @@ void *client_thread(void* arg){
     }
 
     close(nsd);
-    return;
+    return NULL;
 }
 
 

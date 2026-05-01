@@ -10,12 +10,12 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 
-sem_t download_sem;
+extern sem_t download_sem;
 
 struct Session{
     char username[50];
     char password[50];
-    int role[10];
+    char role[10];
 };
 
 struct Meta{

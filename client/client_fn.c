@@ -49,8 +49,6 @@ void *list(void* arg){
     }
     printf("----------------------------\n");
 
-
-    free(thread_args);
     return NULL;
 }
 
@@ -60,12 +58,12 @@ void* upload(void* arg){
     char cmd[200];
     
     char filepath[300];
-    snprintf(filepath, "./client/%s/%s", thread_args->session.username, thread_args->filename);
+    snprintf(filepath, sizeof(filepath), "./client/%s/%s", thread_args->session.username, thread_args->filename);
     
     int fd = open(filepath, O_RDONLY);
     if(fd < 0){
         printf("File not found locally\n");
-        free(thread_args);
+    
         return NULL;
     }
 
@@ -77,13 +75,13 @@ void* upload(void* arg){
     int res;
     read(sd, &res, sizeof(int));
     if(res == 1){ 
-        printf("File not found on server\n");
-        free(thread_args); 
+        printf("File already exists on server\n");
+     
         return NULL; 
     }
     if(res == 2){ 
         printf("permission denied - not the author\n"); 
-        free(thread_args); 
+     
         return NULL; 
     }
 
@@ -103,7 +101,7 @@ void* upload(void* arg){
     printf("Upload completed: %s\n", thread_args->filename);
     close(fd);
 
-    free(thread_args);
+
     return NULL;
 }
 
@@ -119,7 +117,7 @@ void *download(void* arg){
     read(sd, &res, sizeof(int));
     if(res!=0){
         printf("File not found on server\n");
-        free(thread_args);
+    
         return NULL;
     }
 
@@ -129,7 +127,7 @@ void *download(void* arg){
     char buffer[BUFFER_SIZE];
     int total_bytes_received = 0;
     char filepath[300];
-    snprintf(filepath, "./client/%s/%s", thread_args->session.username, thread_args->filename);
+    snprintf(filepath, sizeof(filepath), "./client/%s/%s", thread_args->session.username, thread_args->filename);
     int fd = open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 
     while(total_bytes_received < filesize){
@@ -142,7 +140,7 @@ void *download(void* arg){
     printf("Download completed: %s\n", thread_args->filename);
 
     close(fd);
-    free(thread_args);
+
     return NULL;
 }
 
@@ -152,12 +150,12 @@ void *update(void* arg){
     char cmd[200];
     
     char filepath[300];
-    snprintf(filepath, "./client/%s/%s", thread_args->session.username, thread_args->filename);
+    snprintf(filepath, sizeof(filepath), "./client/%s/%s", thread_args->session.username, thread_args->filename);
     
     int fd = open(filepath, O_RDONLY);
     if(fd < 0){
         printf("File not found locally\n");
-        free(thread_args);
+    
         return NULL;
     }
 
@@ -170,12 +168,12 @@ void *update(void* arg){
     read(sd, &res, sizeof(int));
     if(res == 1){ 
         printf("File not found on server\n");
-        free(thread_args); 
+     
         return NULL; 
     }
     if(res == 2){ 
         printf("permission denied - not the author\n"); 
-        free(thread_args); 
+     
         return NULL; 
     }
 
@@ -196,7 +194,7 @@ void *update(void* arg){
 
     close(fd);
 
-    free(thread_args);
+
     return NULL;
 }
 
@@ -224,6 +222,6 @@ void *delete(void *arg) {
         printf("Delete successful: %s\n", thread_args->filename);
     }
 
-    free(thread_args);
+
     return NULL;
 }

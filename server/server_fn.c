@@ -19,6 +19,7 @@
 #define METADATA_FILES "./server/metadata.txt"
 #define FILES_DIR "./server/files/"
 
+sem_t download_sem;
 
 
 
@@ -62,6 +63,9 @@ int handle_auth(int nsd, struct Session *session){
                 int res=0;
                 write(nsd, &res, sizeof(int));
                 close(fd);
+                strcpy(session->username, auth.username);
+                strcpy(session->password, auth.password);
+                strcpy(session->role, auth.role);
                 return 0;
             }
         }
@@ -79,7 +83,7 @@ int handle_auth(int nsd, struct Session *session){
         if (fd >= 0) {
             struct Session rec;
             while (read(fd, &rec, sizeof(struct Session)) > 0) {
-                if (strcmp(rec.username, session->username) == 0) {
+                if (strcmp(rec.username, auth.username) == 0) {
                     close(fd);
                     int res=1; 
                     write(nsd, &res, sizeof(int));
@@ -91,12 +95,16 @@ int handle_auth(int nsd, struct Session *session){
         fd=open(USER_FILES, O_WRONLY | O_CREAT | O_APPEND, 0666);
         if(fd < 0){
             printf("Database issue\n");
-            return;
+            return 1;
         }
         write(fd, &auth, sizeof(struct Session)); // Write the new user session to the file
         int res=0;
         write(nsd, &res, sizeof(int));
         close(fd);
+
+        strcpy(session->username, auth.username);
+        strcpy(session->password, auth.password);
+        strcpy(session->role, auth.role);
 
         return 0;
     }
@@ -118,7 +126,7 @@ void *handle_list(void* arg){
         int count=0;
         write(nsd, &count, sizeof(int));
         free(thread_args);
-        return;
+        return NULL;
     }
 
     struct Meta rec;
@@ -133,14 +141,16 @@ void *handle_list(void* arg){
 
     while(read(fd, &rec, sizeof(struct Meta)) > 0){
         if(rec.is_deleted == 0){
-            write(nsd, &rec, sizeof(struct Meta)); // Send the metadata of each non-deleted file to the client
+            write(nsd, rec.filename, sizeof(rec.filename));
+            write(nsd, rec.author, sizeof(rec.author));
+            write(nsd, &rec.is_deleted, sizeof(int)); // Send the metadata of each non-deleted file to the client
         }
     }
     close(fd);
 
     printf("List command handled for %s\n", thread_args->session.username);
     free(thread_args);
-    return;
+    return NULL;
 }
 
 
@@ -166,14 +176,14 @@ void *handle_upload(void* arg){
                 write(nsd, &res, sizeof(int));
                 close(mfd);
                 free(thread_args);
-                return;
+                return NULL;
             }
         }
         close(mfd);
     }
 
     char filepath[300];
-    snprintf(filepath, "%s/%s", FILES_DIR, filename); // Construct the file path
+    snprintf(filepath, sizeof(filepath), "%s/%s", FILES_DIR, filename); // Construct the file path
 
     int fd=open(filepath, O_WRONLY | O_CREAT | O_EXCL, 0666); // Open the file for writing, create it if it doesn't exist, and fail if it already exists
     if(fd<0){
@@ -181,7 +191,7 @@ void *handle_upload(void* arg){
         int res=1;
         write(nsd, &res, sizeof(int));
         free(thread_args);
-        return;
+        return NULL;
     }
 
     struct flock lock;
@@ -220,17 +230,17 @@ void *handle_upload(void* arg){
     strcpy(meta.filename, filename);
     strcpy(meta.author, thread_args->session.username);
     meta.is_deleted=0;
-    int mfd=open(METADATA_FILES, O_WRONLY | O_CREAT | O_APPEND, 0666);
-    if(mfd < 0){
+    int mfd2=open(METADATA_FILES, O_WRONLY | O_CREAT | O_APPEND, 0666);
+    if(mfd2 < 0){
         printf("Database issue\n");
         free(thread_args);
-        return;
+        return NULL;
     }
-    write(mfd, &meta, sizeof(struct Meta)); // Write the new file metadata to the file
-    close(mfd);
+    write(mfd2, &meta, sizeof(struct Meta)); // Write the new file metadata to the file
+    close(mfd2);
     printf("Upload command handled for %s\n", thread_args->session.username);
     free(thread_args);
-    return;
+    return NULL;
 }
 
 
@@ -250,7 +260,7 @@ void *handle_download(void* arg){
     read(nsd, filename, sizeof(filename)); // Read the filename from the client
 
     char filepath[300];
-    snprintf(filepath, "%s/%s", FILES_DIR, filename); // Construct the file path
+    snprintf(filepath, sizeof(filepath), "%s/%s", FILES_DIR, filename); // Construct the file path
 
     int fd=open(filepath, O_RDONLY);
     if(fd<0){
@@ -259,7 +269,7 @@ void *handle_download(void* arg){
         write(nsd, &res, sizeof(int));
         sem_post(&download_sem); // Release the semaphore
         free(thread_args);
-        return;
+        return NULL;
     }
 
     int res=0;
@@ -289,7 +299,7 @@ void *handle_download(void* arg){
 
     printf("Download command handled for %s\n", thread_args->session.username);
     free(thread_args);
-    return;
+    return NULL;
 }
 
 
@@ -311,7 +321,7 @@ void *handle_update(void* arg){
         int res=1;
         write(nsd, &res, sizeof(int));
         free(thread_args);
-        return;
+        return NULL;
     }
 
     struct Meta meta;
@@ -329,21 +339,21 @@ void *handle_update(void* arg){
         int res=1;
         write(nsd, &res, sizeof(int));
         free(thread_args);
-        return;
+        return NULL;
     }
     if(strcmp(meta.author, thread_args->session.username) != 0){
         printf("Unauthorized update attempt\n");
-        int res=1;
+        int res=2;
         write(nsd, &res, sizeof(int));
         free(thread_args);
-        return;
+        return NULL;
     }
 
     int res=0;
     write(nsd, &res, sizeof(int)); // Send success response to the client
 
     char filepath[300];
-    snprintf(filepath, "%s/%s", FILES_DIR, filename); // Construct the file path
+    snprintf(filepath, sizeof(filepath), "%s/%s", FILES_DIR, filename); // Construct the file path
 
     int fd=open(filepath, O_WRONLY | O_TRUNC);
     if(fd<0){
@@ -351,7 +361,7 @@ void *handle_update(void* arg){
         int res=1;
         write(nsd, &res, sizeof(int));
         free(thread_args);
-        return;
+        return NULL;
     }
 
     struct flock lock;
@@ -387,7 +397,7 @@ void *handle_update(void* arg){
 
     printf("Update command handled for %s\n", thread_args->session.username);
     free(thread_args);
-    return;
+    return NULL;
 }
 
 
@@ -407,7 +417,7 @@ void* handle_delete(void* arg){
         int res=2;
         write(nsd, &res, sizeof(int));
         free(thread_args);
-        return;
+        return NULL;
     }
 
     int mfd=open(METADATA_FILES, O_RDWR);
@@ -416,7 +426,7 @@ void* handle_delete(void* arg){
         int res=1;
         write(nsd, &res, sizeof(int));
         free(thread_args);
-        return;
+        return NULL;
     }
 
     struct Meta meta;
@@ -438,7 +448,7 @@ void* handle_delete(void* arg){
         int res=1;
         write(nsd, &res, sizeof(int));
         free(thread_args);
-        return;
+        return NULL;
     }
 
     int res=0;
@@ -446,5 +456,5 @@ void* handle_delete(void* arg){
 
     printf("Delete command handled for %s\n", thread_args->session.username);
     free(thread_args);
-    return;
+    return NULL;
 }

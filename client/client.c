@@ -11,6 +11,24 @@
 #define SERVER_PORT 8080
 
 int main(){
+    int sd;
+    struct sockaddr_in serv;
+
+    serv.sin_family = AF_INET;
+    serv.sin_port = htons(SERVER_PORT);
+    serv.sin_addr.s_addr = inet_addr(SERVER_IP);
+
+    sd=socket(AF_INET,SOCK_STREAM,0);
+    if(sd<0){
+        printf("Error creating socket\n");
+        return 1;
+    }
+
+    if(connect(sd,(struct sockaddr *)&serv,sizeof(serv))<0){
+        printf("Error connecting to server\n");
+        return 1;
+    }
+
     struct Session session;
 
     printf("=== Distributed File System ===\n");
@@ -31,23 +49,6 @@ int main(){
     printf("Password: "); scanf("%49s", session.password);
     printf("Role (admin/user): "); scanf("%9s", session.role);
 
-    int sd;
-    struct sockaddr_in serv;
-
-    serv.sin_family = AF_INET;
-    serv.sin_port = htons(SERVER_PORT);
-    serv.sin_addr.s_addr = inet_addr(SERVER_IP);
-
-    sd=socket(AF_INET,SOCK_STREAM,0);
-    if(sd<0){
-        printf("Error creating socket\n");
-        return 1;
-    }
-
-    if(connect(sd,(struct sockaddr *)&serv,sizeof(serv))<0){
-        printf("Error connecting to server\n");
-        return 1;
-    }
 
     int res=authenticate(sd, &session, choice);
     if(res!=0){
@@ -70,8 +71,8 @@ int main(){
     while(1){
         printf("%s/dfs> ", session.username);
         
-        scanf("%s[^\n]", cmd);
-        cmd[strcspn(cmd, "\n")] = 0;
+        if(fgets(cmd, sizeof(cmd), stdin) == NULL) break;
+        cmd[strcspn(cmd, "\n")] = 0;  // strip trailing newline
 
         struct Thread_Args arg;
         arg.sd = sd;
@@ -80,8 +81,7 @@ int main(){
         pthread_t tid;
 
         if(strcmp(cmd, "list")==0){
-            char* filename = NULL;
-            strncpy(arg.filename, filename, sizeof(arg.filename)-1);
+            arg.filename[0] = '\0';
             pthread_create(&tid, NULL, list, (void*)&arg);
             pthread_join(tid, NULL);
 
@@ -128,8 +128,7 @@ int main(){
             continue;
         }
         else{
-            printf("Unknown command\n");
-            free(&arg);
+            printf("Unknown command. Type 'help' for usage.\n");
         }
     }
 
