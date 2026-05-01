@@ -5,46 +5,83 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include "server_fn.h"
 #include <pthread.h>
+#include <semaphore.h>
+#include <sys/stat.h>
+#include "server_fn.h"
+
 
 #define PORT 8080
 #define BUFFER_SIZE 1000
 
-pthread_t list_threads[100];
-pthread_t download_threads[100];
-pthread_t upload_threads[100];
-pthread_t update_threads[100];
-int list_thread_count = 0;
-int download_thread_count = 0;  
-int upload_thread_count = 0;
-int update_thread_count = 0;
-
-void handle_client(int nsd){
+void handle_client(int nsd, struct Session session){
     char cmd[200];
     
-    read(nsd, cmd, sizeof(cmd)); 
-    printf("Command received: %s\n", cmd);
 
-    if(strcmp(cmd, "list")==0){
-        pthread_create(&list_threads[list_thread_count++], NULL, (void *)handle_list, (void *)nsd);
-    }
-    else if(strncmp(cmd, "download", 8)==0){
-        pthread_create(&download_threads[download_thread_count++], NULL, (void *)handle_download, (void *)nsd);
-    }
-    if(strncmp(cmd, "upload", 6)==0){
-        pthread_create(&upload_threads[upload_thread_count++], NULL, (void *)handle_upload, (void *)nsd);
-    }
-    else if(strncmp(cmd, "update", 6)==0){
-        pthread_create(&update_threads[update_thread_count++], NULL, (void *)handle_update, (void *)nsd);
-    }
-    else{
-        char response[BUFFER_SIZE];
-        strcpy(response, "Invalid command");
-        write(nsd, response, sizeof(response));
+    while(1){
+        read(nsd, cmd, sizeof(cmd)); 
+        printf("Command received from %s: %s\n", cmd, session.username);
+    
+        struct Thread_Args *thread_args = (struct Thread_Args *)malloc(sizeof(struct Thread_Args));
+        thread_args->nsd = nsd;
+        thread_args->session = session;
+    
+        pthread_t tid;
+    
+        if (strcmp(cmd, "list") == 0) {
+            pthread_create(&tid, NULL, handle_list, thread_args);
+            pthread_join(tid, NULL);
+        }
+        else if (strcmp(cmd, "upload") == 0) {
+            pthread_create(&tid, NULL, handle_upload, thread_args);
+            pthread_join(tid, NULL);
+        }
+        else if (strcmp(cmd, "download") == 0) {
+            pthread_create(&tid, NULL, handle_download, thread_args);
+            pthread_join(tid, NULL);
+        }
+        else if (strcmp(cmd, "update") == 0) {
+            pthread_create(&tid, NULL, handle_update, thread_args);
+            pthread_join(tid, NULL);
+        }
+        else if (strcmp(cmd, "delete") == 0) {
+            pthread_create(&tid, NULL, handle_delete, thread_args);
+            pthread_join(tid, NULL);
+        }
+        else if (strcmp(cmd, "exit") == 0) {
+            free(thread_args);
+            break;
+        }
+        else{
+            char response[BUFFER_SIZE];
+            strcpy(response, "Invalid command");
+            write(nsd, response, sizeof(response));
+            free(thread_args);
+        }
     }
 }
+
+
+void *client_thread(void* arg){
+    int nsd= *((int *)arg);
+    free(arg);
+
+    struct Session session;
+    if(handle_auth(nsd, &session)==0){
+        handle_client(nsd, session);
+    }
+
+    close(nsd);
+    return;
+}
+
+
 int main(){
+
+    mkdir("./server/files", 0777); // Create directory for storing files if it doesn't exist
+
+    sem_init(&download_sem, 0, 3); // Initialize the semaphore for download synchronization
+
     int sd;
     int nsd;
 
@@ -65,18 +102,25 @@ int main(){
 
     printf("Server is listening on port 8080...\n");
     while(1){
-        socklen_t cli_len = sizeof(cli);
-        nsd = accept(sd, (struct sockaddr *)&cli, &cli_len);
-        if(nsd < 0){
+        struct sockaddr_in cli;
+        int clilen=sizeof(cli);
+        nsd = accept(sd, (struct sockaddr *)&cli, &clilen);
+
+        if(nsd<0){
             perror("accept");
             continue;
         }
 
-        printf("Client connected\n");
-        handle_auth(nsd);
-        handle_client(nsd);
+        printf("Connection accepted\n");
 
-        close(nsd);
+        int *nsd_ptr=malloc(sizeof(int));
+        *nsd_ptr=nsd;
+        pthread_t tid;
+        pthread_create(&tid, NULL, client_thread, nsd_ptr);
+        pthread_detach(tid); // Detach the thread to allow for automatic resource cleanup
     }
         
+    sem_destroy(&download_sem); // Destroy the semaphore
+    close(sd);
+    return 0;
 }

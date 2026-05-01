@@ -2,17 +2,24 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include  "client_fn.h"
+#include <sys/wait.h>
+#include <sys/stat.h>
+#include "client_fn.h"
+
+#define SERVER_IP "127.0.0.1"
+#define SERVER_PORT 8080
 
 int main(){
-    int sd;
-    struct sockaddr_in serv;
+    struct Session session;
 
-    serv.sin_family = AF_INET;
-    serv.sin_port = htons(8080);
+    printf("=== Distributed File System ===\n");
 
-    return 0;
+    printf("1. Login\n");
+    printf("2. Signup\n");
+    printf("3. Exit\n");
+    printf("Choice: ");
+    int choice;
+    scanf("%d", &choice);
+
+    
 }
