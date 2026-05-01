@@ -18,12 +18,18 @@ struct Session{
     char role[10];
 };
 
+struct Thread_Args{
+    int sd;
+    struct Session session;
+    char filename[200];
+};
+
 int authenticate(int sd, struct Session *session, int choice);
 
-void list(int sd, struct Session *session);
-void upload(int sd, struct Session *session, char* filename);
-void download(int sd, struct Session *session, char* filename);
-void update(int sd, struct Session *session, char* filename, char* filepath);
-void delete(int sd, struct Session *session, char* filename);
+void *list(void* arg);
+void *upload(void* arg);
+void *download(void* arg);
+void *update(void* arg);
+void *delete(void* arg);
 
 #endif
