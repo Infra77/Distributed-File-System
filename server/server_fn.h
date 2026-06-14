@@ -13,21 +13,25 @@
 
 // Global concurrency controls shared between server.c and server_fn.c
 extern sem_t download_sem;
+extern sem_t upload_sem;
 extern pthread_mutex_t meta_mutex; 
 extern pthread_mutex_t user_mutex; 
 
+// struct Session to hold user session information
 struct Session{
     char username[50];
     char password[50];
     char role[10];
 };
 
+// struct Meta to hold file metadata information
 struct Meta{
     char filename[200];
     char author[50];
     int is_deleted;
 };
 
+// struct Thread_Args to pass arguments to thread functions
 struct Thread_Args{
     int nsd;
     struct Session session;

@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include "client_fn.h"
 
+// default server IP and port
 #define SERVER_IP "127.0.0.1"
 #define SERVER_PORT 8080
 
@@ -46,6 +47,7 @@ int main(){
         return 0;
     }
 
+    // Get user credentials and role
     printf("Username: "); scanf("%49s", session.username);
     printf("Password: "); scanf("%49s", session.password);
     printf("Role (admin/user): "); scanf("%9s", session.role);
@@ -70,12 +72,14 @@ int main(){
     mkdir(userdir, 0777);
 
     char cmd[200];
-    int c; while ((c = getchar()) != '\n' && c != EOF); 
-
+    int c; 
+    while ((c = getchar()) != '\n' && c != EOF); 
+    
+    // Main command loop after successful authentication
     while(1){
         printf("%s/dfs> ", session.username);
         
-        memset(cmd, 0, sizeof(cmd)); 
+        memset(cmd, 0, sizeof(cmd));        // Clear the command buffer
         if(fgets(cmd, sizeof(cmd), stdin) == NULL) break;
         cmd[strcspn(cmd, "\n")] = 0;
 
@@ -83,11 +87,15 @@ int main(){
 
         struct Thread_Args arg;
         memset(&arg, 0, sizeof(arg)); 
+
+        // Set up thread arguments
         arg.sd = sd;
         arg.session = session;
 
+        // Create a thread for each command to allow concurrent execution
         pthread_t tid;
 
+        // Remote Server Commands
         if(strcmp(cmd, "list")==0){
             pthread_create(&tid, NULL, list, (void*)&arg);
             pthread_join(tid, NULL);
@@ -112,6 +120,8 @@ int main(){
             pthread_create(&tid, NULL, delete, (void*)&arg);
             pthread_join(tid, NULL);
         }
+
+        // Local Sandbox Commands
         else if(strcmp(cmd, "ls")==0){
             pthread_create(&tid, NULL, local_ls, (void*)&arg);
             pthread_join(tid, NULL);
@@ -131,6 +141,8 @@ int main(){
             printf("Exiting...\n");
             break;
         }
+
+        // Help command to list available commands
         else if(strcmp(cmd, "help") == 0){
             printf("  --- Server Commands ---\n");
             printf("  list, upload <file>, download <file>, update <file>, delete <file>\n");

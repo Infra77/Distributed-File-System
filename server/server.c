@@ -10,13 +10,18 @@
 #include <sys/stat.h>
 #include "server_fn.h"
 
+// default Server configurations
 #define PORT 8080
 #define BUFFER_SIZE 1000
 
+// Global concurrency controls
 sem_t download_sem;
+sem_t upload_sem;
 pthread_mutex_t meta_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t user_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+
+// Function to handle client commands in a loop - each command is processed in a separate thread.
 void handle_client(int nsd, struct Session session){
     char cmd[200];
     
@@ -28,7 +33,8 @@ void handle_client(int nsd, struct Session session){
         }
 
         printf("Command received from %s: %s\n", session.username, cmd);
-    
+        
+        // Create a Thread_Args struct to pass to the thread functions
         struct Thread_Args *thread_args = (struct Thread_Args *)malloc(sizeof(struct Thread_Args));
         thread_args->nsd = nsd;
         thread_args->session = session;
@@ -72,9 +78,12 @@ void handle_client(int nsd, struct Session session){
 }
 
 void *client_thread(void* arg){
+    // For each client connection, we first authenticate the user and then enter the command handling loop if authentication is successful.
+    // nsd - socket descriptor for the client connection, passed as an argument to this thread function.
     int nsd = *((int *)arg);
     free(arg);
 
+    // struct Session to hold the authenticated user's session information, which will be used in subsequent command handling. If authentication is successful, this struct will be populated with the user's details and passed to the handle_client function.
     struct Session session;
     if(handle_auth(nsd, &session) == 0){
         handle_client(nsd, session);
@@ -90,7 +99,9 @@ int main(){
     // Setup file storage relative to current directory
     mkdir("files", 0777);
 
+    // Initialize the semaphore for download and upload concurrency control
     sem_init(&download_sem, 0, 3); 
+    sem_init(&upload_sem, 0, 3);
 
     int sd, nsd;
     struct sockaddr_in serv, cli;
@@ -126,12 +137,14 @@ int main(){
         int *nsd_ptr = malloc(sizeof(int));
         *nsd_ptr = nsd;
         
+        // for every accepted client connection, create a new thread to handle it.
         pthread_t tid;
         pthread_create(&tid, NULL, client_thread, nsd_ptr);
         pthread_detach(tid); 
     }
-        
+    
     sem_destroy(&download_sem); 
+    sem_destroy(&upload_sem);
     close(sd);
     return 0;
 }

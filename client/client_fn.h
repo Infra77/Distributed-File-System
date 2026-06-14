@@ -11,18 +11,21 @@
 
 #define BUFFER_SIZE 1000
 
+// struct Session for storing user session information
 struct Session{
     char username[50];
     char password[50];
     char role[10];
 };
 
+// struct Thread_Args for passing arguments to thread functions
 struct Thread_Args{
     int sd;
     struct Session session;
     char filename[200];
 };
 
+// Authentication function to handle user login or registration
 int authenticate(int sd, struct Session *session, int choice);
 
 // Remote Server Commands
