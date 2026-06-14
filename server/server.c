@@ -10,15 +10,23 @@
 #include <sys/stat.h>
 #include "server_fn.h"
 
-
 #define PORT 8080
 #define BUFFER_SIZE 1000
+
+sem_t download_sem;
+pthread_mutex_t meta_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t user_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void handle_client(int nsd, struct Session session){
     char cmd[200];
     
     while(1){
-        read(nsd, cmd, sizeof(cmd)); 
+        int bytes_read = read(nsd, cmd, sizeof(cmd)); 
+        if (bytes_read <= 0) {
+            printf("Client %s disconnected.\n", session.username);
+            break;
+        }
+
         printf("Command received from %s: %s\n", session.username, cmd);
     
         struct Thread_Args *thread_args = (struct Thread_Args *)malloc(sizeof(struct Thread_Args));
@@ -51,75 +59,79 @@ void handle_client(int nsd, struct Session session){
             free(thread_args);
             break;
         }
-        else{
+        else {
             char response[BUFFER_SIZE];
             strcpy(response, "Invalid command");
             write(nsd, response, sizeof(response));
+        }
+        
+        if (strcmp(cmd, "exit") != 0) {
             free(thread_args);
         }
     }
 }
 
-
 void *client_thread(void* arg){
-    int nsd= *((int *)arg);
+    int nsd = *((int *)arg);
     free(arg);
 
     struct Session session;
-    if(handle_auth(nsd, &session)==0){
+    if(handle_auth(nsd, &session) == 0){
         handle_client(nsd, session);
+    } else {
+        printf("Authentication failed for a connection.\n");
     }
 
     close(nsd);
     return NULL;
 }
 
-
 int main(){
+    // Setup file storage relative to current directory
+    mkdir("files", 0777);
 
-    mkdir("./server/files", 0777); // Create directory for storing files if it doesn't exist
+    sem_init(&download_sem, 0, 3); 
 
-    sem_init(&download_sem, 0, 3); // Initialize the semaphore for download synchronization
-
-    int sd;
-    int nsd;
-
+    int sd, nsd;
     struct sockaddr_in serv, cli;
     serv.sin_family = AF_INET;
-    serv.sin_port = htons(8080);
+    serv.sin_port = htons(PORT);
     serv.sin_addr.s_addr = INADDR_ANY;
 
     sd = socket(AF_INET, SOCK_STREAM, 0);
     if(sd < 0){
-        perror("socket");
-        exit(1);
+        perror("socket error"); exit(1);
     }
 
-    bind(sd, (struct sockaddr *)&serv, sizeof(serv));
+    int opt = 1;
+    setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    if (bind(sd, (struct sockaddr *)&serv, sizeof(serv)) < 0) {
+        perror("bind failed"); exit(1);
+    }
 
     listen(sd, 5);
+    printf("Server is listening on port %d...\n", PORT);
 
-    printf("Server is listening on port 8080...\n");
     while(1){
-        struct sockaddr_in cli;
-        int clilen=sizeof(cli);
+        socklen_t clilen = sizeof(cli);
         nsd = accept(sd, (struct sockaddr *)&cli, &clilen);
 
-        if(nsd<0){
-            perror("accept");
-            continue;
+        if(nsd < 0){
+            perror("accept error"); continue;
         }
 
-        printf("Connection accepted\n");
+        printf("Connection accepted from %s\n", inet_ntoa(cli.sin_addr));
 
-        int *nsd_ptr=malloc(sizeof(int));
-        *nsd_ptr=nsd;
+        int *nsd_ptr = malloc(sizeof(int));
+        *nsd_ptr = nsd;
+        
         pthread_t tid;
         pthread_create(&tid, NULL, client_thread, nsd_ptr);
-        pthread_detach(tid); // Detach the thread to allow for automatic resource cleanup
+        pthread_detach(tid); 
     }
         
-    sem_destroy(&download_sem); // Destroy the semaphore
+    sem_destroy(&download_sem); 
     close(sd);
     return 0;
 }

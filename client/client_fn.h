@@ -8,7 +8,6 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <mqueue.h>
 
 #define BUFFER_SIZE 1000
 
@@ -26,10 +25,16 @@ struct Thread_Args{
 
 int authenticate(int sd, struct Session *session, int choice);
 
+// Remote Server Commands
 void *list(void* arg);
 void *upload(void* arg);
 void *download(void* arg);
 void *update(void* arg);
 void *delete(void* arg);
+
+// Local Sandbox Commands
+void *local_ls(void* arg);
+void *local_touch(void* arg);
+void *local_cat(void* arg);
 
 #endif

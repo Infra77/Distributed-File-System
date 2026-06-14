@@ -5,15 +5,11 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <pthread.h>
-#include <mqueue.h>
 #include "client_fn.h"
-
-// authenticate
-// sends choice, username, password, role
-// receives 0 for success, 1 for failure
 
 int authenticate(int sd, struct Session *session, int choice){
     write(sd, &choice, sizeof(choice));
@@ -26,11 +22,12 @@ int authenticate(int sd, struct Session *session, int choice){
     return res;
 }
 
-// list
 void *list(void* arg){
     struct Thread_Args *thread_args = (struct Thread_Args*)arg;
     int sd = thread_args->sd;
+    
     char cmd[200];
+    memset(cmd, 0, sizeof(cmd)); 
     strcpy(cmd, "list");
     write(sd, cmd, sizeof(cmd));
     
@@ -45,7 +42,7 @@ void *list(void* arg){
         read(sd, filename, 200);
         read(sd, author, 50);
         read(sd, &is_deleted, sizeof(int));
-        printf("  %d. %s  [author: %s]\n", i+1, filename, author);
+        printf("  %d. %-20s [author: %s]\n", i+1, filename, author);
     }
     printf("----------------------------\n");
 
@@ -55,37 +52,31 @@ void *list(void* arg){
 void* upload(void* arg){
     struct Thread_Args *thread_args = (struct Thread_Args*)arg;
     int sd = thread_args->sd;
-    char cmd[200];
     
     char filepath[300];
-    snprintf(filepath, sizeof(filepath), "./client/%s/%s", thread_args->session.username, thread_args->filename);
+    snprintf(filepath, sizeof(filepath), "./%s/%s", thread_args->session.username, thread_args->filename);
     
     int fd = open(filepath, O_RDONLY);
     if(fd < 0){
-        printf("File not found locally\n");
-    
+        printf("File not found locally in %s's directory.\n", thread_args->session.username);
         return NULL;
     }
 
+    char cmd[200];
+    memset(cmd, 0, sizeof(cmd));
     strcpy(cmd, "upload");
     write(sd, cmd, sizeof(cmd));
-
     write(sd, thread_args->filename, sizeof(thread_args->filename));
     
     int res;
     read(sd, &res, sizeof(int));
     if(res == 1){ 
-        printf("File already exists on server\n");
-     
-        return NULL; 
-    }
-    if(res == 2){ 
-        printf("permission denied - not the author\n"); 
-     
+        printf("File already exists on server.\n");
+        close(fd);
         return NULL; 
     }
 
-    int filesize=lseek(fd, 0, SEEK_END);
+    int filesize = lseek(fd, 0, SEEK_END);
     lseek(fd, 0, SEEK_SET);
     write(sd, &filesize, sizeof(int));
 
@@ -101,23 +92,23 @@ void* upload(void* arg){
     printf("Upload completed: %s\n", thread_args->filename);
     close(fd);
 
-
     return NULL;
 }
 
 void *download(void* arg){
     struct Thread_Args *thread_args = (struct Thread_Args*)arg;
     int sd = thread_args->sd;
+    
     char cmd[200];
+    memset(cmd, 0, sizeof(cmd));
     strcpy(cmd, "download");
     write(sd, cmd, sizeof(cmd));
     write(sd, thread_args->filename, sizeof(thread_args->filename));
 
     int res;
     read(sd, &res, sizeof(int));
-    if(res!=0){
-        printf("File not found on server\n");
-    
+    if(res != 0){
+        printf("File not found on server.\n");
         return NULL;
     }
 
@@ -127,8 +118,18 @@ void *download(void* arg){
     char buffer[BUFFER_SIZE];
     int total_bytes_received = 0;
     char filepath[300];
-    snprintf(filepath, sizeof(filepath), "./client/%s/%s", thread_args->session.username, thread_args->filename);
+    snprintf(filepath, sizeof(filepath), "./%s/%s", thread_args->session.username, thread_args->filename);
+    
     int fd = open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0) {
+        printf("Failed to create local file.\n");
+        while(total_bytes_received < filesize) {
+            int n = read(sd, buffer, sizeof(buffer));
+            if(n <= 0) break;
+            total_bytes_received += n;
+        }
+        return NULL;
+    }
 
     while(total_bytes_received < filesize){
         int n = read(sd, buffer, sizeof(buffer));
@@ -138,7 +139,6 @@ void *download(void* arg){
     }
 
     printf("Download completed: %s\n", thread_args->filename);
-
     close(fd);
 
     return NULL;
@@ -147,37 +147,36 @@ void *download(void* arg){
 void *update(void* arg){
     struct Thread_Args *thread_args = (struct Thread_Args*)arg;
     int sd = thread_args->sd;
-    char cmd[200];
     
     char filepath[300];
-    snprintf(filepath, sizeof(filepath), "./client/%s/%s", thread_args->session.username, thread_args->filename);
+    snprintf(filepath, sizeof(filepath), "./%s/%s", thread_args->session.username, thread_args->filename);
     
     int fd = open(filepath, O_RDONLY);
     if(fd < 0){
-        printf("File not found locally\n");
-    
+        printf("File not found locally in %s's directory.\n", thread_args->session.username);
         return NULL;
     }
 
+    char cmd[200];
+    memset(cmd, 0, sizeof(cmd));
     strcpy(cmd, "update");
     write(sd, cmd, sizeof(cmd));
-
     write(sd, thread_args->filename, sizeof(thread_args->filename));
     
     int res;
     read(sd, &res, sizeof(int));
     if(res == 1){ 
-        printf("File not found on server\n");
-     
+        printf("File not found on server.\n");
+        close(fd);
         return NULL; 
     }
     if(res == 2){ 
-        printf("permission denied - not the author\n"); 
-     
+        printf("Permission denied - Admin or Author access required.\n"); 
+        close(fd);
         return NULL; 
     }
 
-    int filesize=lseek(fd, 0, SEEK_END);
+    int filesize = lseek(fd, 0, SEEK_END);
     lseek(fd, 0, SEEK_SET);
     write(sd, &filesize, sizeof(int));
 
@@ -191,37 +190,93 @@ void *update(void* arg){
     }
 
     printf("Update completed: %s\n", thread_args->filename);
-
     close(fd);
-
 
     return NULL;
 }
 
-// delete
-// sends filename, receives 0=ok 1=not found 2=not admin
 void *delete(void *arg) {
     struct Thread_Args *thread_args = (struct Thread_Args*)arg;
     int sd = thread_args->sd;
 
     char cmd[200];
+    memset(cmd, 0, sizeof(cmd));
     strcpy(cmd, "delete");
     write(sd, cmd, sizeof(cmd));
-
     write(sd, thread_args->filename, sizeof(thread_args->filename));
 
     int res;
     read(sd, &res, sizeof(int));
     if(res == 1){
-        printf("File not found on server\n");
+        printf("File not found on server.\n");
     } 
     else if(res == 2){
-        printf("Permission denied - not an admin\n");
+        printf("Permission denied - Admin or Author access required.\n");
     } 
     else {
         printf("Delete successful: %s\n", thread_args->filename);
     }
 
+    return NULL;
+}
 
+void *local_ls(void *arg) {
+    struct Thread_Args *thread_args = (struct Thread_Args*)arg;
+    char userdir[200];
+    snprintf(userdir, sizeof(userdir), "./%s", thread_args->session.username);
+
+    pid_t pid = fork();
+    if (pid == 0) {
+        chdir(userdir);
+        execlp("ls", "ls", NULL);
+        perror("ls failed");
+        exit(1);
+    } else if (pid > 0) {
+        wait(NULL);
+    }
+    return NULL;
+}
+
+void *local_touch(void *arg) {
+    struct Thread_Args *thread_args = (struct Thread_Args*)arg;
+    char userdir[200];
+    snprintf(userdir, sizeof(userdir), "./%s", thread_args->session.username);
+
+    if (strlen(thread_args->filename) == 0) {
+        printf("Usage: touch <filename>\n");
+        return NULL;
+    }
+
+    pid_t pid = fork();
+    if (pid == 0) {
+        chdir(userdir);
+        execlp("touch", "touch", thread_args->filename, NULL);
+        perror("touch failed");
+        exit(1);
+    } else if (pid > 0) {
+        wait(NULL);
+    }
+    return NULL;
+}
+
+void *local_cat(void *arg) {
+    struct Thread_Args *thread_args = (struct Thread_Args*)arg;
+    char userdir[200];
+    snprintf(userdir, sizeof(userdir), "./%s", thread_args->session.username);
+
+    if (strlen(thread_args->filename) == 0) {
+        printf("Usage: cat <filename>\n");
+        return NULL;
+    }
+
+    pid_t pid = fork();
+    if (pid == 0) {
+        chdir(userdir);
+        execlp("cat", "cat", thread_args->filename, NULL);
+        perror("cat failed");
+        exit(1);
+    } else if (pid > 0) {
+        wait(NULL);
+    }
     return NULL;
 }
