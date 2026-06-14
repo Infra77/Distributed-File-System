@@ -111,17 +111,19 @@ int main(){
 
     sd = socket(AF_INET, SOCK_STREAM, 0);
     if(sd < 0){
-        perror("socket error"); exit(1);
+        perror("socket error"); 
+        exit(1);
     }
 
     int opt = 1;
     setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
     if (bind(sd, (struct sockaddr *)&serv, sizeof(serv)) < 0) {
-        perror("bind failed"); exit(1);
+        perror("bind failed"); 
+        exit(1);
     }
 
-    listen(sd, 5);
+    listen(sd, 20);
     printf("Server is listening on port %d...\n", PORT);
 
     while(1){
